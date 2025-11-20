@@ -3,6 +3,7 @@ package com.ostordev.mira
 import android.Manifest
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,7 +21,9 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -76,9 +79,10 @@ fun CameraScreen() {
     val context = LocalContext.current
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     var zoomRatio by remember { mutableStateOf(1f) }
-
-    // This is the PreviewView that will be embedded in the composable
     val previewView = remember { PreviewView(context) }
+
+    // ▼▼▼ NEW: State to control the one-time dialog ▼▼▼
+    var showFlashDialog by remember { mutableStateOf(true) }
 
     val transformableState = rememberTransformableState { zoomChange, _, _ ->
         camera?.let {
@@ -93,44 +97,69 @@ fun CameraScreen() {
     }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .transformable(state = transformableState)
-            // ▼▼▼ NEW: TAP-TO-FOCUS LOGIC ▼▼▼
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { offset ->
-                        camera?.let {
-                            // 1. Create a MeteringPoint from the tap coordinates
-                            val meteringPoint = previewView.meteringPointFactory
-                                .createPoint(offset.x, offset.y)
-
-                            // 2. Create a FocusingAction from the MeteringPoint
-                            val action = FocusMeteringAction.Builder(meteringPoint, FocusMeteringAction.FLAG_AF)
-                                .build()
-
-                            // 3. Trigger the focus action on the camera
-                            it.cameraControl.startFocusAndMetering(action)
-                        }
-                    }
-                )
-            }
-        // ▲▲▲ END OF NEW LOGIC ▲▲▲
+        modifier = Modifier.fillMaxSize()
     ) {
         CameraPreview(
-            modifier = Modifier.fillMaxSize(),
-            previewView = previewView, // Pass the PreviewView instance
+            modifier = Modifier
+                .fillMaxSize()
+                .transformable(state = transformableState)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = { offset ->
+                            camera?.let {
+                                val meteringPoint = previewView.meteringPointFactory.createPoint(offset.x, offset.y)
+                                val action = FocusMeteringAction.Builder(meteringPoint, FocusMeteringAction.FLAG_AF).build()
+                                it.cameraControl.startFocusAndMetering(action)
+                            }
+                        }
+                    )
+                },
+            previewView = previewView,
             onCameraReady = { cameraInstance ->
                 camera = cameraInstance
             }
         )
+
+        // ▼▼▼ NEW: Show the AlertDialog when needed ▼▼▼
+        // This condition checks if the dialog should be shown. It's only true once.
+        if (showFlashDialog && camera?.cameraInfo?.hasFlashUnit() == true) {
+            AlertDialog(
+                onDismissRequest = {
+                    // If the user dismisses it (e.g., taps outside), treat it as "No".
+                    showFlashDialog = false
+                },
+                title = { Text("Flashlight") },
+                text = { Text("Do you want to turn the flashlight on?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            // Turn the flash on and dismiss the dialog.
+                            camera?.cameraControl?.enableTorch(true)
+                            showFlashDialog = false
+                        }
+                    ) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            // Leave the flash off and dismiss the dialog.
+                            showFlashDialog = false
+                        }
+                    ) {
+                        Text("No")
+                    }
+                }
+            )
+        }
     }
 }
 
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
-    previewView: PreviewView, // Accept the PreviewView from the parent
+    previewView: PreviewView,
     onCameraReady: (androidx.camera.core.Camera) -> Unit
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -155,11 +184,11 @@ fun CameraPreview(
             )
             onCameraReady(camera)
         } catch (exc: Exception) {
-            // Handle errors
+            Log.e("CameraPreview", "Failed to bind camera", exc)
         }
     }
 
-    AndroidView({ previewView }, modifier)
+    AndroidView({ previewView }, modifier = modifier)
 }
 
 private suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
