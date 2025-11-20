@@ -33,8 +33,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -45,6 +49,23 @@ class MainActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContent {
+            // ▼▼▼ ADD THIS ▼▼▼
+            // This effect will hide the system bars for a full-screen experience.
+            val view = LocalView.current
+            if (!view.isInEditMode) {
+                SideEffect {
+                    val window = (view.context as ComponentActivity).window
+                    val insetsController = WindowCompat.getInsetsController(window, view)
+                    insetsController.apply {
+                        // Hide both the status bar and the navigation bar.
+                        hide(WindowInsetsCompat.Type.systemBars())
+                        // Make the bars sticky, so they don't accidentally reappear.
+                        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    }
+                }
+            }
+            // ▲▲▲ END OF ADDITION ▲▲▲
+
             var hasCamPermission by remember { mutableStateOf(false) }
 
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -73,6 +94,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun CameraScreen() {
